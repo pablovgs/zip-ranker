@@ -46,7 +46,6 @@ async function calculateStreak(userId) {
             if (err) return reject(err);
             if (!rows || rows.length === 0) return resolve(0);
 
-            // On dédoublonne les dates (au cas où)
             const uniqueDates = [...new Set(rows.map(r => r.date))];
             
             let streak = 0;
@@ -55,10 +54,8 @@ async function calculateStreak(userId) {
             yesterdayDate.setDate(yesterdayDate.getDate() - 1);
             const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-            // Vérifie si la série est active (joué aujourd'hui ou hier)
             if (uniqueDates[0] === today || uniqueDates[0] === yesterday) {
                 streak = 1;
-                // On remonte dans le temps
                 for (let i = 0; i < uniqueDates.length - 1; i++) {
                     const d1 = new Date(uniqueDates[i]);
                     const d2 = new Date(uniqueDates[i+1]);
@@ -80,7 +77,6 @@ async function sendDaily() {
     const channel = client.channels.cache.get(CHANNEL_ID);
     if (!channel) return console.error("Salon introuvable !");
 
-    // 1. NETTOYAGE : Supprimer l'ancien message
     try {
         const fetchedMessages = await channel.messages.fetch({ limit: 20 });
         const oldMessage = fetchedMessages.find(m => 
@@ -93,7 +89,6 @@ async function sendDaily() {
         console.error("Erreur nettoyage :", error);
     }
 
-    // 2. ENVOI DU NOUVEAU
     const embed = new EmbedBuilder()
         .setColor(0xFF6B6B)
         .setTitle('⚡ ZIP DU JOUR')
@@ -120,16 +115,15 @@ async function sendRanking(type, interaction = null) {
     const now = new Date();
     
     if (type === 'weekly') {
-        title = "🏆 Classement Semaine (Moyenne)";
+        title = "🏆 Classement Semaine";
         const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         dateCondition = `WHERE date >= '${lastWeek}'`;
     } else if (type === 'monthly') {
-        title = "👑 Classement Mois (Moyenne)";
+        title = "👑 Classement Mois";
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         dateCondition = `WHERE date >= '${firstDay}'`;
     }
 
-    // TRI PAR MOYENNE ASCENDANTE (Le plus petit temps gagne)
     const sql = `SELECT userId, AVG(time) as avg_time, COUNT(*) as games_played FROM times ${dateCondition} GROUP BY userId ORDER BY avg_time ASC`;
 
     db.all(sql, [], async (err, rows) => {
@@ -153,7 +147,8 @@ async function sendRanking(type, interaction = null) {
             if (rank === 2) medal = "🥈";
             if (rank === 3) medal = "🥉";
 
-            description += `${medal} **${rank}. ${user.username}** : ${formatTime(row.avg_time)} *(${row.games_played} essais)*\n`;
+            // Format demandé : 🥇 1. user : 0m 10s (1 essais)
+            description += `${medal} **${rank}. ${user.username}** : ${formatTime(row.avg_time)} (${row.games_played} essais)\n`;
             rank++;
         }
 
@@ -161,7 +156,7 @@ async function sendRanking(type, interaction = null) {
             .setColor(0x2ecc71)
             .setTitle(title)
             .setDescription(description)
-            .setFooter({ text: "Classement Speedrun : La moyenne la plus basse gagne !" })
+            .setFooter({ text: "Classement Zip LinkedIn" }) // Footer modifié
             .setTimestamp();
 
         if (interaction) await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -174,13 +169,9 @@ async function sendRanking(type, interaction = null) {
 client.once(Events.ClientReady, c => {
     console.log(`✅ BOT CONNECTÉ : ${c.user.tag}`);
 
-    // Cron Quotidien (9h30)
     cron.schedule(process.env.DAILY_TIME || '30 9 * * *', () => sendDaily(), { timezone: "Europe/Paris" });
-
-    // Cron Hebdo (Vendredi 18h - Public)
     cron.schedule(process.env.WEEKLY_TIME || '0 18 * * 5', () => sendRanking('weekly'), { timezone: "Europe/Paris" });
 
-    // Cron Mensuel (Fin de mois - Public)
     cron.schedule('0 18 28-31 * *', () => {
         const t = new Date();
         const tmr = new Date(t); tmr.setDate(tmr.getDate() + 1);
@@ -189,7 +180,6 @@ client.once(Events.ClientReady, c => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-    // --- COMMANDES SLASH ---
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'daily') {
             await interaction.reply({ content: '✅', ephemeral: true });
@@ -198,7 +188,6 @@ client.on(Events.InteractionCreate, async interaction => {
         if (interaction.commandName === 'week') sendRanking('weekly', interaction);
         if (interaction.commandName === 'month') sendRanking('monthly', interaction);
         
-        // NOUVELLE COMMANDE STATS
         if (interaction.commandName === 'stats') {
             const userId = interaction.user.id;
             db.all("SELECT time, date FROM times WHERE userId = ? ORDER BY date DESC", [userId], async (err, rows) => {
@@ -223,14 +212,13 @@ client.on(Events.InteractionCreate, async interaction => {
                         { name: '🏆 Record', value: `**${formatTime(bestTime)}**`, inline: true },
                         { name: '📈 Moyenne', value: formatTime(average), inline: true },
                     )
-                    .setFooter({ text: "Mode Speedrun" });
+                    .setFooter({ text: "Classement Zip LinkedIn" });
 
                 await interaction.reply({ embeds: [embed], ephemeral: true });
             });
         }
     }
 
-    // --- BOUTON ---
     if (interaction.isButton() && interaction.customId === 'daily_check') {
         const modal = new ModalBuilder()
             .setCustomId('timeModal')
@@ -247,7 +235,6 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.showModal(modal);
     }
 
-    // --- MODAL ---
     if (interaction.isModalSubmit() && interaction.customId === 'timeModal') {
         const val = interaction.fields.getTextInputValue('timeInput');
         const time = parseInt(val);
