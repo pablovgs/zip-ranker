@@ -10,5 +10,3 @@ services:
       - ./data:/app/data
     environment:
       - TZ=Europe/Paris
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-      - GUILD_ID=${GUILD_ID}

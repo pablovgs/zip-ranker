@@ -24,10 +24,11 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        console.log('🚀 Déploiement des commandes (Serveur Spécifique)...');
+        console.log('🚀 Mise à jour des commandes...');
 
-        if (!process.env.GUILD_ID) {
-            console.error('❌ ERREUR : GUILD_ID manquant dans le .env');
+        // Sécurité : On vérifie que les variables existent avant de lancer
+        if (!process.env.GUILD_ID || !process.env.DISCORD_CLIENT_ID) {
+            console.log('⚠️ Variables manquantes dans l\'environnement, on passe.');
             return;
         }
 
@@ -36,8 +37,8 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
             { body: commands },
         );
 
-        console.log('✅ Commandes enregistrées avec succès !');
+        console.log('✅ Commandes synchronisées !');
     } catch (error) {
-        console.error('❌ Erreur API Discord :', error);
+        console.error(error);
     }
 })();
