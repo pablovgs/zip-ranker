@@ -1,0 +1,15 @@
+{
+  "name": "zip-ranker",
+  "version": "1.0.0",
+  "description": "Bot Discord Zip Ranker",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "node-cron": "^3.0.3",
+    "sqlite3": "^5.1.7",
+    "dotenv": "^16.3.1"
+  }
+}
