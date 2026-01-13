@@ -18,10 +18,6 @@ const client = new Client({
     ]
 });
 
-client.commands = new Collection();
-const foldersPath = path.join(__dirname, 'commands');
-// Si vous avez un dossier commands, sinon on gère les commandes basiques ici (simplifié pour ce fichier unique)
-
 // Base de données
 const db = new sqlite3.Database('./data/zip-ranker.db', (err) => {
     if (err) console.error(err.message);
@@ -34,11 +30,33 @@ db.run(`CREATE TABLE IF NOT EXISTS times (
     date TEXT
 )`);
 
+// --- FONCTIONS ---
+
 // Fonction pour envoyer le message quotidien
 async function sendDaily() {
     const channel = client.channels.cache.get(CHANNEL_ID);
     if (!channel) return console.error("Salon introuvable ! Vérifiez l'ID.");
 
+    // 1. NETTOYAGE : Supprimer l'ancien message du Zip
+    try {
+        // On cherche dans les 20 derniers messages
+        const fetchedMessages = await channel.messages.fetch({ limit: 20 });
+        // On trouve le message du bot qui a le titre "ZIP RANKER"
+        const oldMessage = fetchedMessages.find(m => 
+            m.author.id === client.user.id && 
+            m.embeds.length > 0 && 
+            m.embeds[0].title === '⚡ ZIP RANKER'
+        );
+        
+        if (oldMessage) {
+            await oldMessage.delete();
+            console.log('Ancien message Zip supprimé.');
+        }
+    } catch (error) {
+        console.error("Erreur lors du nettoyage :", error);
+    }
+
+    // 2. ENVOI DU NOUVEAU
     const embed = new EmbedBuilder()
         .setColor(0xFF6B6B)
         .setTitle('⚡ ZIP RANKER')
@@ -53,15 +71,15 @@ async function sendDaily() {
                 .setStyle(ButtonStyle.Success),
         );
 
-    // MODIFICATION ICI : Ajout du content @here
     await channel.send({ content: '@here', embeds: [embed], components: [row] });
     console.log('Message quotidien envoyé !');
 }
 
 // Fonction pour générer le classement
-async function sendRanking(type) {
+// interaction est optionnel : s'il est présent, on répond en "invisible", sinon en public
+async function sendRanking(type, interaction = null) {
     const channel = client.channels.cache.get(CHANNEL_ID);
-    if (!channel) return;
+    if (!channel && !interaction) return; // Si pas de salon et pas d'interaction, on annule
 
     let dateCondition = "";
     let title = "";
@@ -71,7 +89,6 @@ async function sendRanking(type) {
     
     if (type === 'weekly') {
         title = "🏆 Classement de la Semaine";
-        // On prend les 7 derniers jours (simplifié)
         const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         dateCondition = `WHERE date >= '${lastWeek}'`;
     } else if (type === 'monthly') {
@@ -80,11 +97,17 @@ async function sendRanking(type) {
         dateCondition = `WHERE date >= '${firstDay}'`;
     }
 
-    const sql = `SELECT userId, SUM(time) as total_time FROM times ${dateCondition} GROUP BY userId ORDER BY total_time ASC`;
+    const sql = `SELECT userId, SUM(time) as total_time FROM times ${dateCondition} GROUP BY userId ORDER BY total_time DESC`;
 
     db.all(sql, [], async (err, rows) => {
         if (err) return console.error(err);
-        if (rows.length === 0) return channel.send(`Pas de données pour le ${title.toLowerCase()}...`);
+        
+        // Message si vide
+        if (rows.length === 0) {
+            const emptyMsg = `Pas de données pour le ${title.toLowerCase()}...`;
+            if (interaction) return interaction.reply({ content: emptyMsg, ephemeral: true });
+            else return channel.send(emptyMsg);
+        }
 
         let description = "";
         let rank = 1;
@@ -97,7 +120,6 @@ async function sendRanking(type) {
                 user = { username: "Utilisateur inconnu" };
             }
 
-            // MODIFICATION ICI : Affichage en Minutes/Secondes
             const minutes = Math.floor(row.total_time / 60);
             const seconds = row.total_time % 60;
             
@@ -116,33 +138,41 @@ async function sendRanking(type) {
             .setDescription(description)
             .setTimestamp();
 
-        channel.send({ embeds: [embed] });
+        // LOGIQUE D'AFFICHAGE (Public ou Privé)
+        if (interaction) {
+            // Si c'est une commande /week ou /month -> Invisible (Ephemeral)
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        } else {
+            // Si c'est le CRON -> Public
+            await channel.send({ embeds: [embed] });
+        }
     });
 }
+
+// --- EVENTS ---
 
 client.once(Events.ClientReady, c => {
     console.log(`✅ ZIP RANKER connecté !`);
 
     // Planification : 9h30 tous les jours
-    // MODIFICATION POSSIBLE ICI : Changez les heures si besoin via .env ou en dur
     const dailyTime = process.env.DAILY_TIME || '30 9 * * *';
     cron.schedule(dailyTime, () => {
         sendDaily();
     }, { timezone: "Europe/Paris" });
 
-    // Planification : Vendredi 18h (Hebdo)
+    // Planification : Vendredi 18h (Hebdo - PUBLIC)
     const weeklyTime = process.env.WEEKLY_TIME || '0 18 * * 5';
     cron.schedule(weeklyTime, () => {
-        sendRanking('weekly');
+        sendRanking('weekly'); // Pas d'interaction, donc public
     }, { timezone: "Europe/Paris" });
 
-    // Planification : Dernier jour du mois 18h (Mensuel)
+    // Planification : Dernier jour du mois 18h (Mensuel - PUBLIC)
     cron.schedule('0 18 28-31 * *', () => {
         const today = new Date();
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
         if (tomorrow.getMonth() !== today.getMonth()) {
-            sendRanking('monthly');
+            sendRanking('monthly'); // Pas d'interaction, donc public
         }
     }, { timezone: "Europe/Paris" });
 });
@@ -155,12 +185,12 @@ client.on(Events.InteractionCreate, async interaction => {
             sendDaily();
         }
         if (interaction.commandName === 'week') {
-            await interaction.reply({ content: '✅ Classement hebdo envoyé !', ephemeral: true });
-            sendRanking('weekly');
+            // On passe l'interaction pour que ce soit invisible
+            sendRanking('weekly', interaction); 
         }
         if (interaction.commandName === 'month') {
-            await interaction.reply({ content: '✅ Classement mensuel envoyé !', ephemeral: true });
-            sendRanking('monthly');
+            // On passe l'interaction pour que ce soit invisible
+            sendRanking('monthly', interaction);
         }
     }
 
@@ -173,10 +203,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
             const timeInput = new TextInputBuilder()
                 .setCustomId('timeInput')
-                // MODIFICATION ICI : Label Secondes
                 .setLabel('Temps en secondes')
                 .setStyle(TextInputStyle.Short)
-                // MODIFICATION ICI : Placeholder adapté
                 .setPlaceholder('Ex: 90 (pour 1m30s)')
                 .setRequired(true);
 
@@ -201,14 +229,14 @@ client.on(Events.InteractionCreate, async interaction => {
             // Vérification si déjà joué aujourd'hui
             db.get("SELECT * FROM times WHERE userId = ? AND date = ?", [interaction.user.id, today], (err, row) => {
                 if (row) {
+                    // Optionnel : Proposer d'écraser le temps ici plus tard
                     return interaction.reply({ content: '⚠️ Tu as déjà enregistré ton temps aujourd\'hui !', ephemeral: true });
                 }
 
-                // Insertion en base (Temps stocké en secondes)
+                // Insertion en base
                 db.run("INSERT INTO times (userId, time, date) VALUES (?, ?, ?)", [interaction.user.id, time, today], (err) => {
                     if (err) return console.error(err);
                     
-                    // MODIFICATION ICI : Affichage de la réponse en Min/Sec
                     const minutes = Math.floor(time / 60);
                     const seconds = time % 60;
                     
