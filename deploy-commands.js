@@ -24,16 +24,20 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        console.log('Déploiement des commandes Slash...');
+        console.log('🚀 Déploiement des commandes (Serveur Spécifique)...');
 
-        // MODIFICATION ICI : On utilise DISCORD_CLIENT_ID pour matcher ton .env
+        if (!process.env.GUILD_ID) {
+            console.error('❌ ERREUR : GUILD_ID manquant dans le .env');
+            return;
+        }
+
         await rest.put(
-            Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+            Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.GUILD_ID),
             { body: commands },
         );
 
         console.log('✅ Commandes enregistrées avec succès !');
     } catch (error) {
-        console.error(error);
+        console.error('❌ Erreur API Discord :', error);
     }
 })();
