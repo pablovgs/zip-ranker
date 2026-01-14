@@ -92,7 +92,7 @@ async function sendDaily() {
     const embed = new EmbedBuilder()
         .setColor(0xFF6B6B)
         .setTitle('⚡ ZIP DU JOUR')
-        .setDescription('**Quel est ton temps sur le casse-tête du jour ?**\n*Plus c\'est bas, mieux c\'est !*')
+        .setDescription('**Quel est ton temps sur le zip du jour ?**\n*Plus c\'est bas, mieux c\'est !*')
         .setTimestamp();
 
     const row = new ActionRowBuilder()
