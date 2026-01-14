@@ -40,7 +40,11 @@ Il automatise la collecte des scores, calcule les moyennes et gère les classeme
 
 ### 1. Cloner & Configurer
 ```bash
-git clone [https://github.com/TON_PSEUDO/zip-ranker.git](https://github.com/TON_PSEUDO/zip-ranker.git)
+git clone [https://github.com/pablovgs/zip-ranker.git](https://github.com/pablovgs/zip-ranker.git)
 cd zip-ranker
+
+# Copier le fichier d'exemple pour créer votre configuration
 cp .env.example .env
-# Remplissez le fichier .env avec vos Tokens et IDs
+
+# Modifiez le fichier .env avec vos propres IDs et Token
+nano .env
